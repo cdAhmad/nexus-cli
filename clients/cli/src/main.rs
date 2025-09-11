@@ -61,7 +61,7 @@ enum Command {
         #[arg(long = "headless", action = ArgAction::SetTrue)]
         headless: bool,
 
-        /// Maximum number of threads to use for proving.
+        /// DEPRECATED: WILL BE IGNORED. Maximum number of threads to use for proving.
         #[arg(long = "max-threads", value_name = "MAX_THREADS")]
         max_threads: Option<u32>,
 
@@ -83,6 +83,10 @@ enum Command {
         /// Enable LOCAL run elf
         #[arg(long = "with-local", action = ArgAction::SetTrue)]
         with_local: bool,
+
+        /// Override max difficulty to request (SMALL, SMALL_MEDIUM, MEDIUM, LARGE, EXTRA_LARGE)
+        #[arg(long = "max-difficulty", value_name = "DIFFICULTY")]
+        max_difficulty: Option<String>,
     },
     /// Register a new user
     RegisterUser {
@@ -135,6 +139,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             with_background,
             max_tasks,
             with_local,
+            max_difficulty,
         } => {
             // If a custom orchestrator URL is provided, create a custom environment
             let final_environment = if let Some(url) = orchestrator_url {
@@ -153,7 +158,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 check_mem,
                 with_background,
                 max_tasks,
-                with_local
+                with_local,
+                max_difficulty
             ).await
         }
         Command::Logout => {
@@ -209,6 +215,7 @@ async fn start(
     with_background: bool,
     max_tasks: Option<u32>,
     with_local: bool,
+    max_difficulty: Option<String>
 ) -> Result<(), Box<dyn Error>> {
     // 1. Version checking (will internally perform country detection without race)
     validate_version_requirements().await?;
@@ -218,12 +225,84 @@ async fn start(
     let config = Config::resolve(node_id, &config_path, &orchestrator_client).await?;
 
     // 3. Session setup (authenticated worker only)
-    let session = setup_session(config, env, check_mem, max_threads, max_tasks,with_local).await?;
+    // Parse and validate difficulty override (case-insensitive)
+    let max_difficulty_parsed = if let Some(difficulty_str) = &max_difficulty {
+        match difficulty_str.trim().to_ascii_uppercase().as_str() {
+            "SMALL" => Some(crate::nexus_orchestrator::TaskDifficulty::Small),
+            "SMALL_MEDIUM" => Some(crate::nexus_orchestrator::TaskDifficulty::SmallMedium),
+            "MEDIUM" => Some(crate::nexus_orchestrator::TaskDifficulty::Medium),
+            "LARGE" => Some(crate::nexus_orchestrator::TaskDifficulty::Large),
+            "EXTRA_LARGE" => Some(crate::nexus_orchestrator::TaskDifficulty::ExtraLarge),
+            invalid => {
+                eprintln!("Error: Invalid difficulty level '{}'", invalid);
+                eprintln!("Valid difficulty levels are:");
+                eprintln!("  SMALL");
+                eprintln!("  SMALL_MEDIUM");
+                eprintln!("  MEDIUM");
+                eprintln!("  LARGE");
+                eprintln!("  EXTRA_LARGE");
+                eprintln!();
+                eprintln!("Note: Difficulty levels are case-insensitive.");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+
+    let session = setup_session(
+        config,
+        env,
+        check_mem,
+        max_threads,
+        max_tasks,
+        with_local,
+        max_difficulty_parsed
+    ).await?;
 
     // 4. Run appropriate mode
     if headless {
         run_headless_mode(session).await
     } else {
         run_tui_mode(session, with_background).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::nexus_orchestrator::TaskDifficulty;
+
+    #[test]
+    fn test_difficulty_validation() {
+        // Test valid difficulty levels (case-insensitive)
+        assert_eq!(validate_difficulty("small"), Some(TaskDifficulty::Small));
+        assert_eq!(validate_difficulty("SMALL"), Some(TaskDifficulty::Small));
+        assert_eq!(validate_difficulty("Small"), Some(TaskDifficulty::Small));
+
+        assert_eq!(validate_difficulty("small_medium"), Some(TaskDifficulty::SmallMedium));
+        assert_eq!(validate_difficulty("SMALL_MEDIUM"), Some(TaskDifficulty::SmallMedium));
+
+        assert_eq!(validate_difficulty("medium"), Some(TaskDifficulty::Medium));
+        assert_eq!(validate_difficulty("large"), Some(TaskDifficulty::Large));
+        assert_eq!(validate_difficulty("extra_large"), Some(TaskDifficulty::ExtraLarge));
+
+        // Test invalid difficulty levels
+        assert_eq!(validate_difficulty("invalid"), None);
+        assert_eq!(validate_difficulty("small medium"), None); // space instead of underscore
+        assert_eq!(validate_difficulty(""), None);
+        assert_eq!(validate_difficulty("   "), None);
+        assert_eq!(validate_difficulty("SMALL_MEDIUM_EXTRA"), None);
+        assert_eq!(validate_difficulty("123"), None);
+    }
+
+    fn validate_difficulty(difficulty_str: &str) -> Option<TaskDifficulty> {
+        match difficulty_str.trim().to_ascii_uppercase().as_str() {
+            "SMALL" => Some(TaskDifficulty::Small),
+            "SMALL_MEDIUM" => Some(TaskDifficulty::SmallMedium),
+            "MEDIUM" => Some(TaskDifficulty::Medium),
+            "LARGE" => Some(TaskDifficulty::Large),
+            "EXTRA_LARGE" => Some(TaskDifficulty::ExtraLarge),
+            _ => None,
+        }
     }
 }

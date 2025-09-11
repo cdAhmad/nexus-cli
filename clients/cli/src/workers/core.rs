@@ -62,6 +62,7 @@ pub struct WorkerConfig {
     pub client_id: String,
     pub num_workers: usize,
     pub with_local: bool,
+    pub max_difficulty: Option<crate::nexus_orchestrator::TaskDifficulty>,
 }
 
 impl WorkerConfig {
@@ -76,6 +77,7 @@ impl WorkerConfig {
             client_id,
             num_workers,
             with_local,
+            max_difficulty: None,
         }
     }
 }

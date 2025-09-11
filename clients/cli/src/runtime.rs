@@ -6,7 +6,7 @@ use crate::orchestrator::OrchestratorClient;
 use crate::workers::authenticated_worker::AuthenticatedWorker;
 use crate::workers::core::WorkerConfig;
 use ed25519_dalek::SigningKey;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{ broadcast, mpsc };
 use tokio::task::JoinHandle;
 
 /// Start single authenticated worker
@@ -18,17 +18,16 @@ pub async fn start_authenticated_worker(
     shutdown: broadcast::Receiver<()>,
     environment: Environment,
     client_id: String,
-    num_workers:usize,
-    max_tasks:Option< u32>,
-    with_local:bool,
-) -> (
-    mpsc::Receiver<Event>,
-    Vec<JoinHandle<()>>,
-    broadcast::Sender<()>,
-) {
-    let config = WorkerConfig::new(environment, client_id,num_workers,with_local);
-    let (event_sender, event_receiver) =
-        mpsc::channel::<Event>(crate::consts::cli_consts::EVENT_QUEUE_SIZE);
+    num_workers: usize,
+    with_local: bool,
+    max_tasks: Option<u32>,
+    max_difficulty: Option<crate::nexus_orchestrator::TaskDifficulty>
+) -> (mpsc::Receiver<Event>, Vec<JoinHandle<()>>, broadcast::Sender<()>) {
+    let mut config = WorkerConfig::new(environment, client_id, num_workers, with_local);
+    config.max_difficulty = max_difficulty;
+    let (event_sender, event_receiver) = mpsc::channel::<Event>(
+        crate::consts::cli_consts::EVENT_QUEUE_SIZE
+    );
 
     // Create a separate shutdown sender for max tasks completion
     let (shutdown_sender, _) = broadcast::channel(1);
@@ -40,7 +39,7 @@ pub async fn start_authenticated_worker(
         config,
         event_sender,
         max_tasks,
-        shutdown_sender.clone(),
+        shutdown_sender.clone()
     );
 
     let join_handles = worker.run(shutdown).await;

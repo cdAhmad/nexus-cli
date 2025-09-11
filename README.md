@@ -29,7 +29,7 @@ There have been several testnets so far:
 - Testnet 0: [October 8 – 28, 2024](https://blog.nexus.xyz/nexus-launches-worlds-first-open-prover-network/)
 - Testnet I: [December 9 – 13, 2024](https://blog.nexus.xyz/the-new-nexus-testnet-is-live/)
 - Testnet II: [February 18 – 22, 2025](https://blog.nexus.xyz/testnet-ii-is-open/)
-- Devnet: [February 22 - June 20 2025](https://docs.nexus.xyz/layer-1/testnet/devnet)
+- Devnet: [February 22 - June 20, 2025](https://docs.nexus.xyz/layer-1/testnet/devnet)
 - Testnet III: [Ongoing](https://blog.nexus.xyz/live-everywhere/)
 
 ---
@@ -81,24 +81,148 @@ nexus-cli register-node
 nexus-cli start
 ```
 
+To run the CLI noninteractively, you can also opt to start it in headless mode.
+
+```bash
+nexus-cli start --headless
+```
+
+### Adaptive Task Difficulty
+
+The Nexus CLI features an intelligent **adaptive difficulty system** that automatically adjusts task difficulty based on your node's performance. This ensures optimal resource utilization while preventing system overload.
+
+#### How It Works
+
+**Default Behavior:**
+- **Starts at**: `SmallMedium` difficulty (appropriate for most CLI users)
+- **Promotes to**: `Medium` → `Large` based on performance
+- **Promotion Criteria**: Only promotes if previous task completed in < 7 minutes
+- **Safety Limit**: Stops at `Large` difficulty (no automatic promotion to `ExtraLarge`)
+
+**Promotion Path:**
+```
+SmallMedium → Medium → Large
+     ↑           ↑        ↑
+   Default    < 7 min   < 7 min
+              success   success
+```
+
+#### When to Override Difficulty
+
+You might want to manually set difficulty in these scenarios:
+
+**Lower Difficulty (`Small` or `SmallMedium`):**
+- **Resource-Constrained Systems**: Limited CPU, memory, or storage
+- **Background Processing**: Running alongside other intensive applications
+- **Testing/Development**: Want faster task completion for testing
+- **Battery-Powered Devices**: Laptops or mobile devices where power efficiency matters
+
+**Higher Difficulty (`Large` or `ExtraLarge`):**
+- **High-Performance Hardware**: Powerful CPUs with many cores and abundant RAM
+- **Dedicated Proving Machines**: Systems dedicated solely to proving tasks
+- **Experienced Users**: Advanced users who understand resource requirements
+- **Maximum Rewards**: Want to earn maximum rewards from challenging tasks
+
+#### Using Difficulty Override
+
+Override the adaptive system with the `--max-difficulty` argument:
+
+```bash
+# Use lower difficulty for resource-constrained systems
+nexus-cli start --max-difficulty small
+nexus-cli start --max-difficulty small_medium
+
+# Use higher difficulty for powerful hardware
+nexus-cli start --max-difficulty large
+nexus-cli start --max-difficulty extra_large
+
+# Case-insensitive (all equivalent)
+nexus-cli start --max-difficulty MEDIUM
+nexus-cli start --max-difficulty medium
+nexus-cli start --max-difficulty Medium
+```
+
+**Available Difficulty Levels:**
+- `SMALL` - Basic tasks, minimal resource usage
+- `SMALL_MEDIUM` - Default starting difficulty, balanced performance
+- `MEDIUM` - Moderate complexity, good for most systems
+- `LARGE` - High complexity, requires powerful hardware
+- `EXTRA_LARGE` - Maximum complexity, only for dedicated high-end systems
+
+#### Difficulty Guidelines
+
+| Difficulty | CPU Cores | RAM | Task Duration | Use Case |
+|------------|-----------|-----|---------------|----------|
+| `SMALL` | 2-4 cores | 4-8 GB | 1-3 minutes | Resource-constrained, background |
+| `SMALL_MEDIUM` | 4-6 cores | 8-12 GB | 2-5 minutes | Default, balanced performance |
+| `MEDIUM` | 6-8 cores | 12-16 GB | 3-7 minutes | Standard desktop/laptop |
+| `LARGE` | 8+ cores | 16+ GB | 5-15 minutes | High-performance systems |
+| `EXTRA_LARGE` | 12+ cores | 24+ GB | 10-30 minutes | Dedicated proving machines |
+
+#### Monitoring Performance
+
+The CLI automatically tracks your node's performance and adjusts difficulty accordingly. You can monitor this in the dashboard:
+
+- **Task Completion Time**: Shown in the metrics panel
+- **Difficulty Level**: Current difficulty displayed in the info panel
+- **Promotion Status**: Whether the system is promoting or maintaining current level
+
+#### Troubleshooting Difficulty Issues
+
+**If tasks are taking too long:**
+```bash
+# Lower the difficulty
+nexus-cli start --max-difficulty small_medium
+```
+
+**If you want more challenging tasks:**
+```bash
+# Increase the difficulty
+nexus-cli start --max-difficulty large
+```
+
+**If you're unsure about your system's capabilities:**
+- Start with the default adaptive system (no `--max-difficulty` argument)
+- Monitor task completion times in the dashboard
+- Adjust manually based on performance
+
+For detailed information about the adaptive difficulty system, see [ADAPTIVE_DIFFICULTY.md](./ADAPTIVE_DIFFICULTY.md).
+
+#### Quick Reference
+
+**Common Difficulty Commands:**
+```bash
+# Default adaptive difficulty
+nexus-cli start
+
+# Resource-constrained systems
+nexus-cli start --max-difficulty small
+
+# High-performance systems  
+nexus-cli start --max-difficulty large
+
+# Maximum performance
+nexus-cli start --max-difficulty extra_large
+```
+
 The `register-user` and `register-node` commands will save your credentials to `~/.nexus/config.json`. To clear credentials, run:
 
 ```bash
 nexus-cli logout
 ```
 
-For troubleshooting or to see available command line options, run:
+For troubleshooting or to see available command-line options, run:
 
 ```bash
 nexus-cli --help
 ```
 
 ### Use Docker
-Make sure docker and docker compose have been installed on you machine. check documentation here:
+Make sure Docker and Docker Compose have been installed on your machine. Check documentation here:
 - [Install Docker](https://docs.docker.com/engine/install/)
 - [Install Docker Compose](https://docs.docker.com/compose/install/)
 
-Then, modify the node id in the `docker-compose.yaml` file, run:
+Then, modify the node ID in the `docker-compose.yaml` file, run:
 
 ```bash
 docker compose build --no-cache
@@ -166,7 +290,7 @@ itself.
 
 ### 🛠  Developer Guide
 
-The following steps may be required in order to setup a development environment for contributing to the project:
+The following steps may be required in order to set up a development environment for contributing to the project:
 
 #### Linux
 

@@ -153,9 +153,10 @@ impl TaskFetcher {
                 // Log successful fetch
                 self.event_sender.send_task_event(
                     format!(
-                        "Step 1 of 4: Got task {} fetched:{} \nprogram_id:{} task_size:{} task_type: {} ",
+                        "Step 1 of 4: Got task {} fetched:{} max_difficulty:{}\nprogram_id:{} task_size:{} task_type: {} ",
                         task.task_id,
                         self.tasks_fetched,
+                        desired.as_str_name(),
                         task.all_inputs().len(),
                         task.program_id,
                         task.task_type.as_str_name()

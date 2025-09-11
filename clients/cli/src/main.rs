@@ -247,7 +247,7 @@ async fn start(
             }
         }
     } else {
-        None
+        Some(crate::nexus_orchestrator::TaskDifficulty::ExtraLarge)
     };
 
     let session = setup_session(

@@ -50,11 +50,12 @@ impl ProvingEngine {
         task: &Task,
         environment: &Environment,
         client_id: &str,
-        with_local: bool
+        with_local: bool,
+        index:usize
     ) -> Result<Proof, ProverError> {
         if with_local {
             // Use local prover
-            println!("Using local prover for inputs: {:?}", inputs);
+            println!("Using local prover for index {} inputs: {:?}",index, inputs);
             let now: Instant = Instant::now();
             let prover = Self::create_fib_prover()?;
             println!("create_fib_prover {} milliseconds", now.elapsed().as_millis());

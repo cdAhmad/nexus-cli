@@ -59,7 +59,7 @@ impl ProvingPipeline {
                 task,
                 environment,
                 client_id,
-                false
+                false,input_index
             ).await.map_err(|e| {
                 match e {
                     ProverError::Stwo(_) | ProverError::GuestProgram(_) => {
@@ -138,7 +138,7 @@ impl ProvingPipeline {
                         &task_clone,
                         &environment_clone,
                         &client_id_clone,
-                        with_local
+                        with_local,input_index
                     ).await
                 {
                     Ok(valid_proof) => valid_proof,

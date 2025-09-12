@@ -58,8 +58,6 @@ impl ProvingEngine {
             println!("index {index} Using local prover f inputs: {:?}", inputs);
             let now: Instant = Instant::now();
             let prover = Self::create_fib_prover()?;
-            println!("index {index} create_fib_prover {} milliseconds", now.elapsed().as_millis());
-            let now: Instant = Instant::now();
             let (view, proof) = prover
                 .prove_with_input::<(), (u32, u32, u32)>(&(), inputs)
                 .map_err(|e| {
@@ -67,8 +65,6 @@ impl ProvingEngine {
                         format!("Failed to generate proof for inputs {:?}: {}", inputs, e)
                     )
                 })?;
-            println!("index {index} prove_with_input {} milliseconds", now.elapsed().as_millis());
-            let now: Instant = Instant::now();
             // Check exit code in subprocess
             verifier::ProofVerifier::check_exit_code(&view)?;
             println!("index {index} check_exit_code {} milliseconds", now.elapsed().as_millis());

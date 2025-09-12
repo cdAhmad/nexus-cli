@@ -157,8 +157,8 @@ impl TaskFetcher {
                         task.task_id,
                         self.tasks_fetched,
                         desired.as_str_name(),
+                                    task.program_id,
                         task.all_inputs().len(),
-                        task.program_id,
                         task.task_type.as_str_name()
                     ),
                     EventType::Success,

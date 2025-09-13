@@ -224,7 +224,7 @@ pub enum TaskDifficulty {
     Large = 10,
     /// Extra large difficulty bucket
     /// Can only be requested via --max-difficulty argument
-    ExtraLarge = 15,
+    ExtraLarge = 25,
 }
 impl TaskDifficulty {
     /// String value of the enum field names used in the ProtoBuf definition.

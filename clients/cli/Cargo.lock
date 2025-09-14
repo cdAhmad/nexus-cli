@@ -1689,6 +1689,7 @@ dependencies = [
  "futures",
  "home",
  "iana-time-zone",
+ "lazy_static",
  "log",
  "mockall",
  "nexus-sdk",

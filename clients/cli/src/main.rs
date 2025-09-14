@@ -26,6 +26,7 @@ use crate::config::{ Config, get_config_path };
 use crate::environment::Environment;
 use crate::orchestrator::OrchestratorClient;
 use crate::prover::engine::ProvingEngine;
+use crate::prover::pipeline::ProvingPipeline;
 use crate::register::{ register_node, register_user };
 use crate::session::{ run_headless_mode, run_tui_mode, setup_session };
 use crate::version::manager::validate_version_requirements;
@@ -109,6 +110,11 @@ enum Command {
         #[arg(long)]
         inputs: String,
     },
+    #[command(hide = false, name = "p2")]
+    P2 {
+        #[arg(long = "with-local", action = ArgAction::SetTrue)]
+        with_local: bool,
+    },
 }
 
 #[tokio::main]
@@ -189,6 +195,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
                 }
             }
+        }
+        Command::P2 { with_local }=>{
+            let inputs=(5000u32,3791366113u32,4014011445u32);
+            match ProvingEngine::prove_fib_subprocess(&inputs) {
+                Ok(proof) => {
+                    let hash= "8ded59f2f60bf3899808927612d5b33bbe9bf28bbcee8e3a322f1257fdc84c81";
+                   let newhash= ProvingPipeline::generate_proof_hash(&proof);
+                   if hash==newhash {
+                       println!("equals ");
+                   }else{
+                    print!("not equals ");
+                   }
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
+                }
+            }
+
+
         }
     }
 }

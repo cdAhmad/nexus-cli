@@ -196,7 +196,7 @@ impl ProvingPipeline {
     }
 
     /// Generate hash for a proof
-    fn generate_proof_hash(proof: &Proof) -> String {
+   pub fn generate_proof_hash(proof: &Proof) -> String {
         let proof_bytes = postcard::to_allocvec(proof).expect("Failed to serialize proof");
         format!("{:x}", Keccak256::digest(&proof_bytes))
     }

@@ -210,17 +210,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Command::P2 { max_threads, proof, inputs } => {
             let num_threads = max_threads.unwrap_or(1).clamp(1, 1000) as usize;
-            let inputs: Vec<u32> = serde_json::from_str(&inputs)?;
-            // 将 inputs 每三个一组，转换为 (u32, u32, u32)
-            let inputs: Vec<(u32, u32, u32)> = inputs
-                .chunks(3)
-                .map(|chunk| {
-                    let a = *chunk.get(0).unwrap_or(&0);
-                    let b = *chunk.get(1).unwrap_or(&0);
-                    let c = *chunk.get(2).unwrap_or(&0);
-                    (a, b, c)
-                })
-                .collect();
+            let inputs: Vec<(u32,u32,u32)> = serde_json::from_str(&inputs)?;
             let input_size = inputs.len();
             // 使用 num_threads 个线程处理 inputs
             let results: Vec<

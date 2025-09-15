@@ -5,6 +5,7 @@ use crate::prover::verifier;
 use super::types::ProverError;
 use crate::analytics::track_likely_oom_error;
 use crate::environment::Environment;
+use crate::prover::input::InputParser;
 use crate::task::Task;
 use nexus_sdk::{
     Local, Prover,
@@ -12,11 +13,11 @@ use nexus_sdk::{
 };
 use postcard::from_bytes;
 use serde_json;
+use sha3::Digest;
+use sha3::Keccak256;
 use std::env;
 use std::process::Stdio;
 use std::time::Instant;
-use sha3::Keccak256;
-use sha3::Digest;
 const ELF_PROVER: &[u8; 104004] = include_bytes!("../../assets/fib_input_initial");
 
 /// Core proving engine for ZK proof generation
@@ -54,6 +55,63 @@ impl ProvingEngine {
             now.elapsed().as_millis()
         );
         Ok(proof)
+    }
+
+    pub async fn prove(
+        task: &Task,
+        num_threads: usize,
+        with_local: bool,
+    ) -> Result<(Vec<Proof>, Vec<String>), ProverError> {
+        let now = Instant::now();
+        let mut inputs: Vec<(u32, u32, u32)> = task
+            .all_inputs()
+            .iter()
+            .map(|data| InputParser::parse_triple_input(data).unwrap())
+            .collect();
+        let exe_path = env::current_exe()?;
+        let mut cmd = tokio::process::Command::new(exe_path);
+        cmd.arg("p2")
+            .arg("--max-threads")
+            .arg(format!("{}", num_threads));
+        if task.task_type == crate::nexus_orchestrator::TaskType::ProofRequired {
+            cmd.arg("--proof");
+        }
+        cmd.arg("--inputs")
+            .arg(serde_json::to_string(&inputs)?)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+
+        let output = cmd.output().await?;
+
+        if !output.status.success() {
+            if let Some(code) = output.status.code() {
+                if code == crate::consts::cli_consts::SUBPROCESS_SUSPECTED_OOM_CODE {
+                    // 128 + 9 = 137 means external sigkill, so likely killed by kernel due to OOM; track analytics event
+                    return Err(ProverError::Subprocess(format!(
+                        "Error SUBPROCESS_SUSPECTED_OOM_CODE captured error: [{}]",
+                        &String::from_utf8_lossy(&output.stderr)
+                    )));
+                }
+
+                if code == crate::consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE {
+                    // error happened inside the subprocess, and so we know that it may be useful information to the user
+                    return Err(ProverError::Subprocess(format!(
+                        "Error while proving within subprocess, captured error: [{}]",
+                        &String::from_utf8_lossy(&output.stderr)
+                    )));
+                }
+            }
+
+            return Err(ProverError::Subprocess(format!(
+                "Prover subprocess failed with status: {}",
+                output.status
+            )));
+        }
+        let result: (Vec<Proof>, Vec<String>) = from_bytes(&output.stdout)?;
+        // 打印 proof 耗时
+        println!("verify proof {} milliseconds", now.elapsed().as_millis());
+
+        Ok(result)
     }
 
     /// Generate proof for given inputs using the fibonacci program in a subprocess
@@ -127,7 +185,7 @@ impl ProvingEngine {
         // Deserialize proof from subprocess stdout
         let proof: Proof = from_bytes(&output.stdout)?;
         println!("{}", String::from_utf8_lossy(&output.stderr));
- println!("hash: {}", Self::generate_proof_hash(&proof));
+        println!("hash: {}", Self::generate_proof_hash(&proof));
 
         // Verify proof in main process
         // let verify_prover = Self::create_fib_prover()?;
@@ -140,7 +198,7 @@ impl ProvingEngine {
         );
         Ok(proof)
     }
-   pub fn generate_proof_hash(proof: &Proof) -> String {
+    pub fn generate_proof_hash(proof: &Proof) -> String {
         let proof_bytes = postcard::to_allocvec(proof).expect("Failed to serialize proof");
         format!("{:x}", Keccak256::digest(&proof_bytes))
     }

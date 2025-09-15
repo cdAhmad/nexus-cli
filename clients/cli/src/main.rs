@@ -24,16 +24,24 @@ mod workers;
 
 use crate::config::{ Config, get_config_path };
 use crate::environment::Environment;
+use crate::nexus_orchestrator::SubmitProofRequest;
 use crate::orchestrator::OrchestratorClient;
 use crate::prover::engine::ProvingEngine;
 use crate::prover::pipeline::ProvingPipeline;
 use crate::register::{ register_node, register_user };
 use crate::session::{ run_headless_mode, run_tui_mode, setup_session };
 use crate::version::manager::validate_version_requirements;
+use crate::workers::prover::ProveError;
 use clap::{ ArgAction, Parser, Subcommand };
+use futures::future::Join;
+use futures::StreamExt;
+use nexus_sdk::stwo::seq::Proof;
 use postcard::to_allocvec;
+use rand::seq::index;
+use tokio::task::JoinError;
 use std::error::Error;
 use std::io::Write;
+use std::os::unix::raw::off_t;
 use std::process::exit;
 
 #[derive(Parser)]
@@ -110,10 +118,14 @@ enum Command {
         #[arg(long)]
         inputs: String,
     },
-    #[command(hide = false, name = "p2")]
-    P2 {
-        #[arg(long = "with-local", action = ArgAction::SetTrue)]
-        with_local: bool,
+    #[command(hide = false, name = "p2")] P2 {
+        /// DEPRECATED: WILL BE IGNORED. Maximum number of threads to use for proving.
+        #[arg(long = "max-threads", value_name = "MAX_THREADS")]
+        max_threads: Option<usize>,
+        #[arg(long = "proof", value_name = "PROOF", action = ArgAction::SetFalse)]
+        proof: bool,
+        #[arg(long)]
+        inputs: String,
     },
 }
 
@@ -196,26 +208,66 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
         }
-        Command::P2 { with_local }=>{
-            let inputs=(5000u32,3791366113u32,4014011445u32);
-            match ProvingEngine::prove_fib_subprocess(&inputs) {
-                Ok(proof) => {
-                    let hash= "8ded59f2f60bf3899808927612d5b33bbe9bf28bbcee8e3a322f1257fdc84c81";
-                   let newhash= ProvingPipeline::generate_proof_hash(&proof);
-                   if hash==newhash {
-                       println!("equals ");
-                   }else{
-                    print!("not equals ");
-                   }
-                    Ok(())
-                }
-                Err(e) => {
-                    eprintln!("{}", e);
-                    exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
+        Command::P2 { max_threads, proof, inputs } => {
+            let num_threads = max_threads.unwrap_or(1).clamp(1, 1000) as usize;
+            let inputs: Vec<u32> = serde_json::from_str(&inputs)?;
+            // 将 inputs 每三个一组，转换为 (u32, u32, u32)
+            let inputs: Vec<(u32, u32, u32)> = inputs
+                .chunks(3)
+                .map(|chunk| {
+                    let a = *chunk.get(0).unwrap_or(&0);
+                    let b = *chunk.get(1).unwrap_or(&0);
+                    let c = *chunk.get(2).unwrap_or(&0);
+                    (a, b, c)
+                })
+                .collect();
+            let input_size = inputs.len();
+            // 使用 num_threads 个线程处理 inputs
+            let results: Vec<
+                Result<(Proof, String), Box<dyn Error + Send + Sync>>
+            > = futures::stream
+                ::iter(inputs)
+                .map(|input| {
+                    async move {
+                        let proof = tokio::task
+                            ::spawn_blocking(move || {
+                                // 这里 ProvingEngine::prove_fib_subprocess 是同步的
+                                ProvingEngine::prove_fib_subprocess(&input)
+                            }).await
+                            .map_err(|e| format!("Join error: {e}"))??;
+
+                        let proof_hash = ProvingEngine::generate_proof_hash(&proof);
+                        Ok::<(Proof, String), Box<dyn Error + Send + Sync>>((proof, proof_hash))
+                    }
+                })
+                .buffer_unordered(num_threads)
+                .collect().await;
+            let mut proofs: Vec<&Proof> = vec![];
+            let mut hashs: Vec<&String> = vec![];
+            // 输出结果 proof 为false 仅添加第一个任务的 proof
+            for  (i,res) in results.iter().enumerate() {
+                match res {
+                    Ok((p, v)) => {
+                        if proof || i == 0 {
+                             proofs.push(p);
+                        }
+                        hashs.push(v);
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
+                    }
                 }
             }
-
-
+            if hashs.len() == input_size {
+                let mut out = std::io::stdout().lock();
+                let bytes = to_allocvec(&(proofs, hashs))?;
+                out.write_all(&bytes)?;
+                Ok(())
+            } else {
+                eprintln!("not all tasks completed successfully");
+                exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
+            }
         }
     }
 }

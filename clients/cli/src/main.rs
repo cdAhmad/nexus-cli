@@ -210,9 +210,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Command::P2 { max_threads, proof, inputs } => {
             let num_threads = max_threads.unwrap_or(1).clamp(1, 1000) as usize;
+            
             let inputs: Vec<(u32,u32,u32)> = serde_json::from_str(&inputs)?;
+            //inputs_size 100个
             let input_size = inputs.len();
-            // 使用 num_threads 个线程处理 inputs
+            // 使用 num_threads 个线程处理 inputs 默认 num_threads=2
             let results: Vec<
                 Result<(Proof, String), Box<dyn Error + Send + Sync>>
             > = futures::stream

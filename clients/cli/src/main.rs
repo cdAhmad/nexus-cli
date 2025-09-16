@@ -27,6 +27,7 @@ use crate::environment::Environment;
 use crate::nexus_orchestrator::SubmitProofRequest;
 use crate::orchestrator::OrchestratorClient;
 use crate::prover::engine::ProvingEngine;
+use crate::prover::input::{self, InputParser};
 use crate::prover::pipeline::ProvingPipeline;
 use crate::register::{ register_node, register_user };
 use crate::session::{ run_headless_mode, run_tui_mode, setup_session };
@@ -43,6 +44,8 @@ use std::error::Error;
 use std::io::Write;
 use std::os::unix::raw::off_t;
 use std::process::exit;
+use std::time::Instant;
+use rayon::prelude::*;
 
 #[derive(Parser)]
 #[command(
@@ -209,60 +212,60 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         Command::P2 { max_threads, proof, inputs } => {
-            let num_threads = max_threads.unwrap_or(1).clamp(1, 1000) as usize;
-            
-            let inputs: Vec<(u32,u32,u32)> = serde_json::from_str(&inputs)?;
-            //inputs_size 100个
-            let input_size = inputs.len();
-            // 使用 num_threads 个线程处理 inputs 默认 num_threads=2
-            let results: Vec<
-                Result<(Proof, String), Box<dyn Error + Send + Sync>>
-            > = futures::stream
-                ::iter(inputs)
-                .map(|input| {
-                    async move {
-                        let proof = tokio::task
-                            ::spawn_blocking(move || {
-                                // 这里 ProvingEngine::prove_fib_subprocess 是同步的
-                                ProvingEngine::prove_fib_subprocess(&input)
-                            }).await
-                            .map_err(|e| format!("Join error: {e}"))??;
+            let now = Instant::now();
+            let num_threads = max_threads.unwrap_or(1).clamp(1, 1000);
 
-                        let proof_hash = ProvingEngine::generate_proof_hash(&proof);
-                        Ok::<(Proof, String), Box<dyn Error + Send + Sync>>((proof, proof_hash))
-                    }
+            // 配置 rayon 线程池
+            rayon::ThreadPoolBuilder::new().num_threads(num_threads).build_global()?;
+            let inputs: Vec<(u32, u32, u32)> = serde_json::from_str(&inputs)?;
+
+            let input_size = inputs.len();
+
+            // rayon 并行执行
+            let results: Vec<Result<(Proof, String), Box<dyn Error + Send + Sync>>> = inputs
+                .par_iter()
+                .map(|input| {
+                    let proof = ProvingEngine::prove_fib_subprocess(input)?;
+                    let proof_hash = ProvingEngine::generate_proof_hash(&proof);
+                    Ok::<(Proof, String), Box<dyn Error + Send + Sync>>((proof, proof_hash))
                 })
-                .buffer_unordered(num_threads)
-                .collect().await;
-            let mut proofs: Vec<&Proof> = vec![];
-            let mut hashs: Vec<&String> = vec![];
-            // 输出结果 proof 为false 仅添加第一个任务的 proof
-            for  (i,res) in results.iter().enumerate() {
+                .collect();
+
+            let mut proofs: Vec<Proof> = Vec::new();
+            let mut hashs: Vec<String> = Vec::new();
+
+            // 收集结果
+            for (i, res) in results.into_iter().enumerate() {
                 match res {
                     Ok((p, v)) => {
                         if proof || i == 0 {
-                             proofs.push(p);
+                            proofs.push(p);
                         }
                         hashs.push(v);
                     }
                     Err(e) => {
                         eprintln!("Error: {e}");
-                        exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
+                        std::process::exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
                     }
                 }
             }
+
             if hashs.len() == input_size {
                 let mut out = std::io::stdout().lock();
                 let bytes = to_allocvec(&(proofs, hashs))?;
                 out.write_all(&bytes)?;
+                // println!("Output bytes length: {}", bytes.len());
+                // println!("All tasks completed successfully in {} ms", now.elapsed().as_millis());
                 Ok(())
             } else {
                 eprintln!("not all tasks completed successfully");
-                exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
+                std::process::exit(consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE);
             }
         }
     }
 }
+
+ 
 
 /// Starts the Nexus CLI application.
 ///

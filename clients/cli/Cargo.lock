@@ -1687,6 +1687,7 @@ dependencies = [
  "crossterm 0.29.0",
  "ed25519-dalek",
  "futures",
+ "hex",
  "home",
  "iana-time-zone",
  "lazy_static",

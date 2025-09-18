@@ -85,11 +85,9 @@ pub async fn setup_session(
     max_difficulty: Option<crate::nexus_orchestrator::TaskDifficulty>,
 ) -> Result<SessionData, Box<dyn Error>> {
     let node_id = config.node_id.parse::<u64>()?;
-    let client_id = config.user_id;
+    let client_id = config.user_id.clone();
 
-    // Create a signing key for the prover
-    let mut csprng = rand_core::OsRng;
-    let signing_key: SigningKey = SigningKey::generate(&mut csprng);
+    let signing_key: SigningKey = config.get_signing_key()?;
 
     // Create orchestrator client
     let orchestrator_client = OrchestratorClient::new(env.clone());

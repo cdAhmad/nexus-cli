@@ -1,19 +1,19 @@
 //! Application configuration.
 
-use crate::cli_messages::{print_error, print_info, print_success};
+use crate::cli_messages::{ print_error, print_info, print_success };
 use crate::environment::Environment;
 use crate::orchestrator::Orchestrator;
-use serde::{Deserialize, Serialize};
+use ed25519_dalek::SigningKey;
+use serde::{ Deserialize, Serialize };
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
-
+use std::path::{ Path, PathBuf };
+use ed25519_dalek::SecretKey;
 /// Get the path to the Nexus config file, typically located at ~/.nexus/config.json.
 pub fn get_config_path() -> Result<PathBuf, std::io::Error> {
-    let home_path = home::home_dir().ok_or(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "Home directory not found",
-    ))?;
+    let home_path = home
+        ::home_dir()
+        .ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found"))?;
     let config_path = home_path.join(".nexus").join("config.json");
     Ok(config_path)
 }
@@ -35,6 +35,8 @@ pub struct Config {
     /// Node ID, resolved to a valid u64 during `Config::resolve`
     #[serde(default)]
     pub node_id: String,
+
+    pub singing_key: SecretKey,
 }
 
 impl Config {
@@ -43,22 +45,30 @@ impl Config {
         user_id: String,
         wallet_address: String,
         node_id: String,
-        environment: Environment,
+        environment: Environment
     ) -> Self {
+        let mut csprng = rand_core::OsRng;
+        let signing_key = SigningKey::generate(&mut csprng);
         Config {
             user_id,
             wallet_address,
             node_id,
             environment: environment.to_string(),
+            singing_key: signing_key.to_bytes(),
         }
     }
 
     /// Loads configuration from a JSON file at the given path.
     pub fn load_from_file(path: &Path) -> Result<Self, std::io::Error> {
         let buf = fs::read(path)?;
-        let config: Config = serde_json::from_slice(&buf)
+        let config: Config = serde_json
+            ::from_slice(&buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Ok(config)
+    }
+    pub fn get_signing_key(&self) -> Result<SigningKey, Box<dyn Error>> {
+        let signing_key = SigningKey::from_bytes(&self.singing_key);
+        Ok(signing_key)
     }
 
     /// Saves the configuration to a JSON file at the given path.
@@ -66,12 +76,14 @@ impl Config {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string_pretty(self).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Serialization failed: {}", e),
-            )
-        })?;
+        let json = serde_json
+            ::to_string_pretty(self)
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Serialization failed: {}", e)
+                )
+            })?;
         fs::write(path, json)?;
         Ok(())
     }
@@ -83,10 +95,12 @@ impl Config {
             return Ok(());
         }
         if !path.ends_with("config.json") {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Path must end with config.json",
-            ));
+            return Err(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Path must end with config.json"
+                )
+            );
         }
         fs::remove_file(path)
     }
@@ -95,7 +109,7 @@ impl Config {
     pub async fn resolve(
         node_id_arg: Option<u64>,
         config_path: &Path,
-        orchestrator: &impl Orchestrator,
+        orchestrator: &impl Orchestrator
     ) -> Result<Self, Box<dyn Error>> {
         // Special case: if --node-id is provided, allow running without config file
         if let Some(node_id) = node_id_arg {
@@ -103,13 +117,15 @@ impl Config {
 
             // Get the wallet address for analytics
             let wallet_address = orchestrator.get_node(&node_id.to_string()).await?;
-
+            let mut csprng = rand_core::OsRng;
+            let signing_key = SigningKey::generate(&mut csprng);
             // Create a minimal config with the provided node_id
             let config = Config {
                 user_id: "anonymous".to_string(), // Use anonymous for --node-id shortcut
                 wallet_address,
                 node_id: node_id.to_string(),
                 environment: "".to_string(),
+                singing_key: signing_key.to_bytes(),
             };
 
             return Ok(config);
@@ -119,7 +135,7 @@ impl Config {
         if !config_path.exists() {
             print_info(
                 "Welcome to Nexus CLI!",
-                "Please register your wallet address to get started: nexus-cli register-user --wallet-address <your-wallet-address>",
+                "Please register your wallet address to get started: nexus-cli register-user --wallet-address <your-wallet-address>"
             );
             return Err("Configuration file not found. Please register first.".into());
         }
@@ -132,7 +148,7 @@ impl Config {
             Ok(id_from_config) => {
                 print_success(
                     "Found Node ID from config file",
-                    &format!("Node ID: {}", id_from_config),
+                    &format!("Node ID: {}", id_from_config)
                 );
                 id_from_config
             }
@@ -140,7 +156,7 @@ impl Config {
                 // The config is present but incomplete or invalid
                 print_error(
                     "Your configuration is incomplete or invalid.",
-                    Some("Please register your node. Start with: nexus-cli register-node"),
+                    Some("Please register your node. Start with: nexus-cli register-node")
                 );
                 return Err(e);
             }
@@ -165,10 +181,10 @@ impl Config {
         if self.node_id.is_empty() {
             print_error(
                 "User registered, but no node found",
-                Some("Please register a node to continue: nexus-cli register-node"),
+                Some("Please register a node to continue: nexus-cli register-node")
             );
             return Err(
-                "Node registration required. Please run 'nexus-cli register-node' first.".into(),
+                "Node registration required. Please run 'nexus-cli register-node' first.".into()
             );
         }
 
@@ -177,11 +193,10 @@ impl Config {
             Err(_) => {
                 print_error(
                     "Invalid node ID in config file",
-                    Some("Please register a new node: nexus-cli register-node"),
+                    Some("Please register a new node: nexus-cli register-node")
                 );
                 Err(
-                    "Invalid node ID in config. Please run 'nexus-cli register-node' to fix this."
-                        .into(),
+                    "Invalid node ID in config. Please run 'nexus-cli register-node' to fix this.".into()
                 )
             }
         }
@@ -228,10 +243,7 @@ mod tests {
 
         // Check if the directories were created
         assert!(result.is_ok(), "Failed to save config");
-        assert!(
-            path.parent().unwrap().exists(),
-            "Parent directory does not exist"
-        );
+        assert!(path.parent().unwrap().exists(), "Parent directory does not exist");
     }
 
     #[test]
@@ -288,7 +300,10 @@ mod tests {
 
         // Write a JSON with user_id and empty strings for other fields
         let mut file = File::create(&path).unwrap();
-        writeln!(file, r#"{{ "user_id": "test_user", "wallet_address": "", "environment": "", "node_id": "" }}"#).unwrap();
+        writeln!(
+            file,
+            r#"{{ "user_id": "test_user", "wallet_address": "", "environment": "", "node_id": "" }}"#
+        ).unwrap();
 
         match Config::load_from_file(&path) {
             Ok(config) => {

@@ -34,6 +34,7 @@ use crate::session::{ run_headless_mode, run_tui_mode, setup_session };
 use crate::version::manager::validate_version_requirements;
 use crate::workers::prover::ProveError;
 use clap::{ ArgAction, Parser, Subcommand };
+use ed25519_dalek::SigningKey;
 use futures::future::Join;
 use futures::StreamExt;
 use nexus_sdk::stwo::seq::Proof;
@@ -324,7 +325,7 @@ async fn start(
             }
         }
     } else {
-        Some(crate::nexus_orchestrator::TaskDifficulty::ExtraLarge)
+        Some(crate::nexus_orchestrator::TaskDifficulty::ExtraLarge2)
     };
 
     let session = setup_session(

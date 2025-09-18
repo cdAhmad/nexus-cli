@@ -167,7 +167,7 @@ impl TaskFetcher {
                                 "Server adjusted difficulty: requested {:?}, assigned {:?} (reputation gating) featched:{}",
                                 requested_difficulty,
                                 proof_task_result.actual_difficulty,
-                                task_fetching
+                                self.tasks_fetched  
                             ),
                             EventType::Success,
                             LogLevel::Info,

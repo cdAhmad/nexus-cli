@@ -228,7 +228,7 @@ pub enum TaskDifficulty {
     Medium = 5,
     Large = 10,
     ExtraLarge = 15,
-    ExtraLarge2 = 25,
+    ExtraLarge2 = 16,
 }
 impl TaskDifficulty {
     /// String value of the enum field names used in the ProtoBuf definition.

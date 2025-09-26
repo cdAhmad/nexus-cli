@@ -43,7 +43,6 @@ use rand::seq::index;
 use tokio::task::JoinError;
 use std::error::Error;
 use std::io::Write;
-use std::os::unix::raw::off_t;
 use std::process::exit;
 use std::time::Instant;
 use rayon::prelude::*;

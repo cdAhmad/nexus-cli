@@ -6,11 +6,15 @@ use super::types::ProverError;
 use crate::{ analytics::track_verification_failed, prover::input };
 use crate::environment::Environment;
 use crate::task::Task;
+use chrono::Local;
 use futures::stream::FuturesUnordered;
 use nexus_sdk::stwo::seq::Proof;
 use rayon::iter::IntoParallelRefIterator;
 use sha3::{ Digest, Keccak256 };
 use tokio::task;
+use std::collections::HashSet;
+use std::iter;
+use std::sync::atomic::{ AtomicUsize, Ordering };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use futures::stream::StreamExt;
@@ -104,6 +108,7 @@ impl ProvingPipeline {
         with_local: bool
     ) -> Result<(Vec<Proof>, String, Vec<String>), ProverError> {
         let all_inputs = task.all_inputs();
+        let len = all_inputs.len();
         if num_workers == 1 {
             println!("num_workers: {}, all_inputs.len: {}", num_workers, all_inputs.len());
             return Self::prove_fib_task_single(task, environment, client_id, with_local).await;
@@ -112,9 +117,25 @@ impl ProvingPipeline {
             return Err(ProverError::MalformedTask("No inputs provided for task".to_string()));
         }
         println!("num_workers: {}, all_inputs.len: {}", num_workers, all_inputs.len());
-
+        // 检查是否有重复
+        let mut seen = HashSet::new();
+        for input in all_inputs {
+            if !seen.insert(input) {
+                // insert 返回 false 表示已存在
+                println!("input has same item");
+            }
+        }
         let semaphore = Arc::new(Semaphore::new(num_workers));
+        let completed = Arc::new(AtomicUsize::new(0)); // ✅ 进度计数器
+        let next_report_percent = Arc::new(AtomicUsize::new(5)); // 从 5% 开始
         let mut futures = FuturesUnordered::new();
+        println!(
+            "[{}] [{}/{}] {}% of proofs completed",
+            Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            0,
+            len,
+            0
+        );
         for (input_index, input_data) in all_inputs.iter().enumerate() {
             let permit = semaphore
                 .clone()
@@ -125,6 +146,7 @@ impl ProvingPipeline {
             let env = environment.clone();
             let client_id = client_id.to_string();
             let input_data = input_data.clone();
+            let completed = completed.clone(); // 共享计数器
 
             let fut = async move {
                 let _permit = permit; // held until end of block
@@ -139,13 +161,42 @@ impl ProvingPipeline {
                 ).await?;
 
                 let hash = Self::generate_proof_hash(&proof);
+
                 Ok::<_, ProverError>((input_index, proof, hash))
             };
+            let current_completed = completed.fetch_add(1, Ordering::Relaxed) + 1;
+            let current_percent = (current_completed * 100) / len;
 
+            let mut report_threshold = next_report_percent.load(Ordering::Relaxed);
+            while current_percent >= report_threshold && report_threshold <= 100 {
+                if
+                    next_report_percent
+                        .compare_exchange_weak(
+                            report_threshold,
+                            report_threshold + 5,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed
+                        )
+                        .is_ok()
+                {
+                    println!(
+                        "[{}] [{}/{}] {}% of proofs completed",
+                        Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        current_completed,
+                        len,
+                        report_threshold
+                    );
+                    break;
+                }
+                report_threshold = next_report_percent.load(Ordering::Relaxed);
+            }
             futures.push(tokio::spawn(fut));
         }
-        let mut results: Vec<Option<(usize, Proof, String)>> = vec![];
-        // let mut errors = Vec::new();
+
+        let mut results: Vec<Option<(usize, Proof, String)>> = iter
+            ::repeat_with(|| None)
+            .take(all_inputs.len())
+            .collect();
 
         while let Some(result) = futures.next().await {
             match result {
@@ -162,6 +213,7 @@ impl ProvingPipeline {
                 }
             }
         }
+
         // 按顺序提取
         let (mut all_proofs, mut proof_hashes) = (Vec::new(), Vec::new());
         for res in results.into_iter() {

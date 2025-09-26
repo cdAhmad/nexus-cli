@@ -44,11 +44,11 @@ impl ProvingEngine {
         // Check exit code in subprocess
         // verifier::ProofVerifier::check_exit_code(&view)?;
         // 4. 打印耗时（可选：写到 stderr 让主进程收集日志）
-        eprintln!(
-            "prove_fib_subprocess finished for inputs {:?} in {} ms",
-            inputs,
-            now.elapsed().as_millis()
-        );
+        // eprintln!(
+        //     "prove_fib_subprocess finished for inputs {:?} in {} ms",
+        //     inputs,
+        //     now.elapsed().as_millis()
+        // );
         Ok(proof)
     }
 
@@ -189,7 +189,8 @@ impl ProvingEngine {
 
         // Deserialize proof from subprocess stdout
         let proof: Proof = from_bytes(&output.stdout)?;
-        println!("{}", String::from_utf8_lossy(&output.stderr));
+        // println!("{}", String::from_utf8_lossy(&output.stderr));
+        
 
         // Verify proof in main process
         // let verify_prover = Self::create_fib_prover()?;

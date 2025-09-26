@@ -3,14 +3,17 @@
 use super::engine::ProvingEngine;
 use super::input::InputParser;
 use super::types::ProverError;
-use crate::analytics::track_verification_failed;
+use crate::{ analytics::track_verification_failed, prover::input };
 use crate::environment::Environment;
 use crate::task::Task;
+use futures::stream::FuturesUnordered;
 use nexus_sdk::stwo::seq::Proof;
+use rayon::iter::IntoParallelRefIterator;
 use sha3::{ Digest, Keccak256 };
 use tokio::task;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+use futures::stream::StreamExt;
 /// Orchestrates the complete proving pipeline
 pub struct ProvingPipeline;
 
@@ -39,7 +42,8 @@ impl ProvingPipeline {
     async fn prove_fib_task_single(
         task: &Task,
         environment: &Environment,
-        client_id: &str,with_local: bool
+        client_id: &str,
+        with_local: bool
     ) -> Result<(Vec<Proof>, String, Vec<String>), ProverError> {
         let all_inputs = task.all_inputs();
 
@@ -59,12 +63,13 @@ impl ProvingPipeline {
                 task,
                 environment,
                 client_id,
-                false,input_index
+                false,
+                input_index
             ).await.map_err(|e| {
                 match e {
                     ProverError::Stwo(_) | ProverError::GuestProgram(_) => {
                         // Track verification failure
-                        let error_msg = format!("Input {}: {}", input_index as u32 , e);
+                        let error_msg = format!("Input {}: {}", input_index as u32, e);
                         tokio::spawn(
                             track_verification_failed(
                                 task.clone(),
@@ -99,28 +104,79 @@ impl ProvingPipeline {
         with_local: bool
     ) -> Result<(Vec<Proof>, String, Vec<String>), ProverError> {
         let all_inputs = task.all_inputs();
-        if num_workers == 1   {
+        if num_workers == 1 {
             println!("num_workers: {}, all_inputs.len: {}", num_workers, all_inputs.len());
-            return Self::prove_fib_task_single(task, environment, client_id,with_local).await;
+            return Self::prove_fib_task_single(task, environment, client_id, with_local).await;
         }
         if all_inputs.is_empty() {
             return Err(ProverError::MalformedTask("No inputs provided for task".to_string()));
         }
         println!("num_workers: {}, all_inputs.len: {}", num_workers, all_inputs.len());
-        let result= ProvingEngine::prove(task,num_workers,with_local);
-        match  result.await {
-            Ok((all_proofs,  proof_hashes)) => {
-                let final_proof_hash = Self::combine_proof_hashes(task, &proof_hashes);
-                Ok((all_proofs, final_proof_hash, proof_hashes))
-            },
-            Err(e) => {
-                 Err( e)
-            },
+
+        let semaphore = Arc::new(Semaphore::new(num_workers));
+        let mut futures = FuturesUnordered::new();
+        for (input_index, input_data) in all_inputs.iter().enumerate() {
+            let permit = semaphore
+                .clone()
+                .acquire_owned().await
+                .map_err(|_| { ProverError::MalformedTask("Semaphore closed".into()) })?;
+
+            let task = task.clone();
+            let env = environment.clone();
+            let client_id = client_id.to_string();
+            let input_data = input_data.clone();
+
+            let fut = async move {
+                let _permit = permit; // held until end of block
+                let inputs = InputParser::parse_triple_input(&input_data)?;
+                let proof = ProvingEngine::prove_and_validate(
+                    &inputs,
+                    &task,
+                    &env,
+                    &client_id,
+                    false,
+                    input_index
+                ).await?;
+
+                let hash = Self::generate_proof_hash(&proof);
+                Ok::<_, ProverError>((input_index, proof, hash))
+            };
+
+            futures.push(tokio::spawn(fut));
         }
+        let mut results: Vec<Option<(usize, Proof, String)>> = vec![];
+        // let mut errors = Vec::new();
+
+        while let Some(result) = futures.next().await {
+            match result {
+                Ok(Ok((idx, proof, hash))) => {
+                    results[idx] = Some((idx, proof, hash));
+                }
+                Ok(Err(e)) => {
+                    // 可选择立即返回或收集错误
+                    // 这里我们选择 fail-fast
+                    return Err(ProverError::MalformedTask("Task panicked".into()));
+                }
+                Err(_) => {
+                    return Err(ProverError::MalformedTask("Task panicked".into()));
+                }
+            }
+        }
+        // 按顺序提取
+        let (mut all_proofs, mut proof_hashes) = (Vec::new(), Vec::new());
+        for res in results.into_iter() {
+            if let Some((_, proof, hash)) = res {
+                all_proofs.push(proof);
+                proof_hashes.push(hash);
+            }
+        }
+
+        let final_hash = Self::combine_proof_hashes(task, &proof_hashes);
+        Ok((all_proofs, final_hash, proof_hashes))
     }
 
     /// Generate hash for a proof
-   pub fn generate_proof_hash(proof: &Proof) -> String {
+    pub fn generate_proof_hash(proof: &Proof) -> String {
         let proof_bytes = postcard::to_allocvec(proof).expect("Failed to serialize proof");
         format!("{:x}", Keccak256::digest(&proof_bytes))
     }

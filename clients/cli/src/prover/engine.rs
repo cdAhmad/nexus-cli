@@ -7,10 +7,7 @@ use crate::analytics::track_likely_oom_error;
 use crate::environment::Environment;
 use crate::prover::input::InputParser;
 use crate::task::Task;
-use nexus_sdk::{
-    Local, Prover,
-    stwo::seq::{Proof, Stwo},
-};
+use nexus_sdk::{ Local, Prover, stwo::seq::{ Proof, Stwo } };
 use postcard::from_bytes;
 use serde_json;
 use sha3::Digest;
@@ -26,12 +23,11 @@ pub struct ProvingEngine;
 impl ProvingEngine {
     /// Create a Stwo prover instance for the fibonacci program
     pub fn create_fib_prover() -> Result<Stwo<Local>, ProverError> {
-        Stwo::<Local>::new_from_bytes(ELF_PROVER).map_err(|e| {
-            ProverError::Stwo(format!(
-                "Failed to load fib_input_initial guest program: {}",
-                e
-            ))
-        })
+        Stwo::<Local>
+            ::new_from_bytes(ELF_PROVER)
+            .map_err(|e| {
+                ProverError::Stwo(format!("Failed to load fib_input_initial guest program: {}", e))
+            })
     }
 
     /// Subprocess entrypoint: generate proof without verification
@@ -41,10 +37,9 @@ impl ProvingEngine {
         let (view, proof) = prover
             .prove_with_input::<(), (u32, u32, u32)>(&(), inputs)
             .map_err(|e| {
-                ProverError::Stwo(format!(
-                    "Failed to generate proof for inputs {:?}: {}",
-                    inputs, e
-                ))
+                ProverError::Stwo(
+                    format!("Failed to generate proof for inputs {:?}: {}", inputs, e)
+                )
             })?;
         // Check exit code in subprocess
         // verifier::ProofVerifier::check_exit_code(&view)?;
@@ -60,7 +55,7 @@ impl ProvingEngine {
     pub async fn prove(
         task: &Task,
         num_threads: usize,
-        with_local: bool,
+        with_local: bool
     ) -> Result<(Vec<Proof>, Vec<String>), ProverError> {
         let now = Instant::now();
         let mut inputs: Vec<(u32, u32, u32)> = task
@@ -70,9 +65,7 @@ impl ProvingEngine {
             .collect();
         let exe_path = env::current_exe()?;
         let mut cmd = tokio::process::Command::new(exe_path);
-        cmd.arg("p2")
-            .arg("--max-threads")
-            .arg(format!("{}", num_threads));
+        cmd.arg("p2").arg("--max-threads").arg(format!("{}", num_threads));
         if task.task_type == crate::nexus_orchestrator::TaskType::ProofRequired {
             cmd.arg("--proof");
         }
@@ -87,25 +80,34 @@ impl ProvingEngine {
             if let Some(code) = output.status.code() {
                 if code == crate::consts::cli_consts::SUBPROCESS_SUSPECTED_OOM_CODE {
                     // 128 + 9 = 137 means external sigkill, so likely killed by kernel due to OOM; track analytics event
-                    return Err(ProverError::Subprocess(format!(
-                        "Error SUBPROCESS_SUSPECTED_OOM_CODE captured error: [{}]",
-                        &String::from_utf8_lossy(&output.stderr)
-                    )));
+                    return Err(
+                        ProverError::Subprocess(
+                            format!(
+                                "Error SUBPROCESS_SUSPECTED_OOM_CODE captured error: [{}]",
+                                &String::from_utf8_lossy(&output.stderr)
+                            )
+                        )
+                    );
                 }
 
                 if code == crate::consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE {
                     // error happened inside the subprocess, and so we know that it may be useful information to the user
-                    return Err(ProverError::Subprocess(format!(
-                        "Error while proving within subprocess, captured error: [{}]",
-                        &String::from_utf8_lossy(&output.stderr)
-                    )));
+                    return Err(
+                        ProverError::Subprocess(
+                            format!(
+                                "Error while proving within subprocess, captured error: [{}]",
+                                &String::from_utf8_lossy(&output.stderr)
+                            )
+                        )
+                    );
                 }
             }
 
-            return Err(ProverError::Subprocess(format!(
-                "Prover subprocess failed with status: {}",
-                output.status
-            )));
+            return Err(
+                ProverError::Subprocess(
+                    format!("Prover subprocess failed with status: {}", output.status)
+                )
+            );
         }
         let result: (Vec<Proof>, Vec<String>) = from_bytes(&output.stdout)?;
         // 打印 proof 耗时
@@ -121,7 +123,7 @@ impl ProvingEngine {
         environment: &Environment,
         client_id: &str,
         with_local: bool,
-        index: usize,
+        index: usize
     ) -> Result<Proof, ProverError> {
         if with_local {
             // Use local prover
@@ -131,17 +133,13 @@ impl ProvingEngine {
             let (view, proof) = prover
                 .prove_with_input::<(), (u32, u32, u32)>(&(), inputs)
                 .map_err(|e| {
-                    ProverError::Stwo(format!(
-                        "Failed to generate proof for inputs {:?}: {}",
-                        inputs, e
-                    ))
+                    ProverError::Stwo(
+                        format!("Failed to generate proof for inputs {:?}: {}", inputs, e)
+                    )
                 })?;
             // Check exit code in subprocess
             verifier::ProofVerifier::check_exit_code(&view)?;
-            println!(
-                "index {index} check_exit_code {} milliseconds",
-                now.elapsed().as_millis()
-            );
+            println!("index {index} check_exit_code {} milliseconds", now.elapsed().as_millis());
             return Ok(proof);
         }
         let now = Instant::now();
@@ -160,44 +158,46 @@ impl ProvingEngine {
             if let Some(code) = output.status.code() {
                 if code == crate::consts::cli_consts::SUBPROCESS_SUSPECTED_OOM_CODE {
                     // 128 + 9 = 137 means external sigkill, so likely killed by kernel due to OOM; track analytics event
-                    tokio::spawn(track_likely_oom_error(
-                        task.clone(),
-                        environment.clone(),
-                        client_id.to_string(),
-                    ));
+                    tokio::spawn(
+                        track_likely_oom_error(
+                            task.clone(),
+                            environment.clone(),
+                            client_id.to_string()
+                        )
+                    );
                 }
 
                 if code == crate::consts::cli_consts::SUBPROCESS_INTERNAL_ERROR_CODE {
                     // error happened inside the subprocess, and so we know that it may be useful information to the user
-                    return Err(ProverError::Subprocess(format!(
-                        "Error while proving within subprocess, captured error: [{}]",
-                        &String::from_utf8_lossy(&output.stderr)
-                    )));
+                    return Err(
+                        ProverError::Subprocess(
+                            format!(
+                                "Error while proving within subprocess, captured error: [{}]",
+                                &String::from_utf8_lossy(&output.stderr)
+                            )
+                        )
+                    );
                 }
             }
 
-            return Err(ProverError::Subprocess(format!(
-                "Prover subprocess failed with status: {}",
-                output.status
-            )));
+            return Err(
+                ProverError::Subprocess(
+                    format!("Prover subprocess failed with status: {}", output.status)
+                )
+            );
         }
 
         // Deserialize proof from subprocess stdout
         let proof: Proof = from_bytes(&output.stdout)?;
         println!("{}", String::from_utf8_lossy(&output.stderr));
-        println!("hash: {}", Self::generate_proof_hash(&proof));
 
         // Verify proof in main process
         // let verify_prover = Self::create_fib_prover()?;
         // verifier::ProofVerifier::verify_proof(&proof, inputs, &verify_prover)?;
 
-        // 打印 proof 耗时
-        println!(
-            "index {index} verify proof {} milliseconds",
-            now.elapsed().as_millis()
-        );
         Ok(proof)
     }
+
     pub fn generate_proof_hash(proof: &Proof) -> String {
         let proof_bytes = postcard::to_allocvec(proof).expect("Failed to serialize proof");
         format!("{:x}", Keccak256::digest(&proof_bytes))

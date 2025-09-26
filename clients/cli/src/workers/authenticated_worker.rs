@@ -116,29 +116,12 @@ impl AuthenticatedWorker {
         self.event_sender.send_event(
             Event::state_change(
                 ProverState::Proving,
-                format!("Step 2 of 4: Proving task {} len {}", task.task_id, public_inputs_list_len)
-            )
-        ).await;
-        let all_inputs = task.all_inputs();
-        let mut input_msgs = Vec::new(); // 用来存储每个解析成功后的字符串
-        for (input_index, input_data) in all_inputs.iter().enumerate() {
-            match InputParser::parse_triple_input(input_data) {
-                Ok((n, init_a, init_b)) => {
-                    // 成功解析输入数据
-                    let result_string = format!("{}, {},{},{}", input_index, n, init_a, init_b);
-                    input_msgs.push(result_string);
-                }
-                Err(_e) => {
-                    // 处理解析失败的错误
-                }
-            }
-        }
-        // 将所有拼接后的字符串使用分隔符连接成一个最终的字符串
-        let final_result = input_msgs.join("\n");
-        self.event_sender.send_event(
-            Event::state_change(
-                ProverState::Proving,
-                format!("Step 2 of 4: Proving inputs:\n{}", final_result)
+                format!(
+                    "Step 2 of 4: Proving task {} len {} difficulty {}",
+                    task.task_id,
+                    public_inputs_list_len,
+                    task.difficulty.as_str_name()
+                )
             )
         ).await;
 
@@ -168,21 +151,20 @@ impl AuthenticatedWorker {
             self.fetcher.update_success_tracking(duration_secs);
 
             // Send information about completing the task
-            self.event_sender
-                .send_event(Event::state_change(
+            self.event_sender.send_event(
+                Event::state_change(
                     ProverState::Waiting,
                     format!(
                         "{} completed, Task size: {}, Duration: {}s, Difficulty: {}",
                         task.task_id,
                         task.public_inputs_list.len(),
                         self.fetcher.last_success_duration_secs.unwrap_or(0),
-                        self.fetcher
-                            .last_success_difficulty
+                        self.fetcher.last_success_difficulty
                             .map(|difficulty| difficulty.as_str_name())
                             .unwrap_or("Unknown")
-                    ),
-                ))
-                .await;
+                    )
+                )
+            ).await;
             // Check if we've reached the maximum number of tasks
             if let Some(max) = self.max_tasks {
                 if self.tasks_completed >= max {

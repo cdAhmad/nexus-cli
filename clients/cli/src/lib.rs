@@ -1,3 +1,4 @@
+use blake2::Blake2s256;
 use jni::{ objects::{ JClass, JString }, sys::{ jint, jstring }, JNIEnv };
 use nexus_sdk::{ stwo::seq::{ Proof, Stwo }, Local, Prover };
 use postcard::to_allocvec;
@@ -10,7 +11,11 @@ pub extern "system" fn Java_com_htmk_Nexus_init(
     input: JString
 ) -> jstring {
     let input: String = env.get_string(&input).unwrap().into();
+    let mut hash = Blake2s256::new();
+    hash.update(&input);
+    let code = hash.finalize();
     let output = format!("Hello from Rust, {}!", input);
+    let output = format!("{:x} {}", code, output);
     env.new_string(output).unwrap().into_raw()
 }
 
@@ -47,3 +52,6 @@ pub extern "system" fn Java_com_htmk_Nexus_fib(
     }
 }
 // cargo ndk --target arm64-v8a  -o '/Users/hemh/Desktop/test/gameclick/app/src/main/jniLibs'  build --release
+
+// /Users/hemh/Library/Android/sdk/ndk/28.0.12674087/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-objdump \
+// -d /Users/hemh/Desktop/test/gameclick/app/src/main/jniLibs/arm64-v8a/libnexus_network.so > disasm.txt

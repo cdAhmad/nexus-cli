@@ -1719,6 +1719,7 @@ version = "0.10.15"
 dependencies = [
  "assert_cmd",
  "async-trait",
+ "blake2",
  "cfg-if",
  "chrono",
  "clap",

@@ -51,7 +51,3 @@ pub extern "system" fn Java_com_htmk_Nexus_fib(
         env.new_string(&proof_hash).unwrap().into_raw()
     }
 }
-// cargo ndk --target arm64-v8a  -o '/Users/hemh/Desktop/test/gameclick/app/src/main/jniLibs'  build --release
-
-// /Users/hemh/Library/Android/sdk/ndk/28.0.12674087/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-objdump \
-// -d /Users/hemh/Desktop/test/gameclick/app/src/main/jniLibs/arm64-v8a/libnexus_network.so > disasm.txt

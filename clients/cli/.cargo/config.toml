@@ -21,3 +21,8 @@ rustflags = ["-C", "target-cpu=native"]
 
 # For Intel optimization:
 # rustflags = ["-C", "target-cpu=native"]
+
+[target.aarch64-linux-android]
+rustflags = [
+    "-C", "target-feature=-rcpc",
+]

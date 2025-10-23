@@ -26,3 +26,8 @@ rustflags = ["-C", "target-cpu=native"]
 rustflags = [
     "-C", "target-feature=-rcpc",
 ]
+
+[target. aarch64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-feature=-rcpc",
+]

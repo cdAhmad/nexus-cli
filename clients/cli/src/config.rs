@@ -1,19 +1,29 @@
 //! Application configuration.
 
-use crate::cli_messages::{ print_error, print_info, print_success };
+use crate::cli_messages::{print_error, print_info, print_success};
 use crate::environment::Environment;
 use crate::orchestrator::Orchestrator;
+use ed25519_dalek::SecretKey;
 use ed25519_dalek::SigningKey;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs;
-use std::path::{ Path, PathBuf };
-use ed25519_dalek::SecretKey;
+use std::path::{Path, PathBuf};
+
+pub fn is_android() -> bool {
+    cfg!(target_os = "android")
+}
+
 /// Get the path to the Nexus config file, typically located at ~/.nexus/config.json.
 pub fn get_config_path() -> Result<PathBuf, std::io::Error> {
-    let home_path = home
-        ::home_dir()
-        .ok_or(std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found"))?;
+    let home_path = if is_android() {
+        std::env::current_dir()?
+    } else {
+        home::home_dir().ok_or(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Home directory not found",
+        ))?
+    };
     let config_path = home_path.join(".nexus").join("config.json");
     Ok(config_path)
 }
@@ -45,7 +55,7 @@ impl Config {
         user_id: String,
         wallet_address: String,
         node_id: String,
-        environment: Environment
+        environment: Environment,
     ) -> Self {
         let mut csprng = rand_core::OsRng;
         let signing_key = SigningKey::generate(&mut csprng);
@@ -61,8 +71,7 @@ impl Config {
     /// Loads configuration from a JSON file at the given path.
     pub fn load_from_file(path: &Path) -> Result<Self, std::io::Error> {
         let buf = fs::read(path)?;
-        let config: Config = serde_json
-            ::from_slice(&buf)
+        let config: Config = serde_json::from_slice(&buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Ok(config)
     }
@@ -76,14 +85,12 @@ impl Config {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let json = serde_json
-            ::to_string_pretty(self)
-            .map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Serialization failed: {}", e)
-                )
-            })?;
+        let json = serde_json::to_string_pretty(self).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Serialization failed: {}", e),
+            )
+        })?;
         fs::write(path, json)?;
         Ok(())
     }
@@ -95,12 +102,10 @@ impl Config {
             return Ok(());
         }
         if !path.ends_with("config.json") {
-            return Err(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Path must end with config.json"
-                )
-            );
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Path must end with config.json",
+            ));
         }
         fs::remove_file(path)
     }
@@ -109,7 +114,7 @@ impl Config {
     pub async fn resolve(
         node_id_arg: Option<u64>,
         config_path: &Path,
-        orchestrator: &impl Orchestrator
+        orchestrator: &impl Orchestrator,
     ) -> Result<Self, Box<dyn Error>> {
         // Special case: if --node-id is provided, allow running without config file
         if let Some(node_id) = node_id_arg {
@@ -135,7 +140,7 @@ impl Config {
         if !config_path.exists() {
             print_info(
                 "Welcome to Nexus CLI!",
-                "Please register your wallet address to get started: nexus-cli register-user --wallet-address <your-wallet-address>"
+                "Please register your wallet address to get started: nexus-cli register-user --wallet-address <your-wallet-address>",
             );
             return Err("Configuration file not found. Please register first.".into());
         }
@@ -148,7 +153,7 @@ impl Config {
             Ok(id_from_config) => {
                 print_success(
                     "Found Node ID from config file",
-                    &format!("Node ID: {}", id_from_config)
+                    &format!("Node ID: {}", id_from_config),
                 );
                 id_from_config
             }
@@ -156,7 +161,7 @@ impl Config {
                 // The config is present but incomplete or invalid
                 print_error(
                     "Your configuration is incomplete or invalid.",
-                    Some("Please register your node. Start with: nexus-cli register-node")
+                    Some("Please register your node. Start with: nexus-cli register-node"),
                 );
                 return Err(e);
             }
@@ -181,10 +186,10 @@ impl Config {
         if self.node_id.is_empty() {
             print_error(
                 "User registered, but no node found",
-                Some("Please register a node to continue: nexus-cli register-node")
+                Some("Please register a node to continue: nexus-cli register-node"),
             );
             return Err(
-                "Node registration required. Please run 'nexus-cli register-node' first.".into()
+                "Node registration required. Please run 'nexus-cli register-node' first.".into(),
             );
         }
 
@@ -193,10 +198,11 @@ impl Config {
             Err(_) => {
                 print_error(
                     "Invalid node ID in config file",
-                    Some("Please register a new node: nexus-cli register-node")
+                    Some("Please register a new node: nexus-cli register-node"),
                 );
                 Err(
-                    "Invalid node ID in config. Please run 'nexus-cli register-node' to fix this.".into()
+                    "Invalid node ID in config. Please run 'nexus-cli register-node' to fix this."
+                        .into(),
                 )
             }
         }
@@ -243,7 +249,10 @@ mod tests {
 
         // Check if the directories were created
         assert!(result.is_ok(), "Failed to save config");
-        assert!(path.parent().unwrap().exists(), "Parent directory does not exist");
+        assert!(
+            path.parent().unwrap().exists(),
+            "Parent directory does not exist"
+        );
     }
 
     #[test]

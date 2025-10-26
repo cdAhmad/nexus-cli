@@ -21,13 +21,18 @@ pub async fn start_authenticated_worker(
     num_workers: usize,
     with_local: bool,
     max_tasks: Option<u32>,
-    max_difficulty: Option<crate::nexus_orchestrator::TaskDifficulty>
-) -> (mpsc::Receiver<Event>, Vec<JoinHandle<()>>, broadcast::Sender<()>) {
-    let mut config = WorkerConfig::new(environment, client_id, num_workers, with_local);
+    max_difficulty: Option<crate::nexus_orchestrator::TaskDifficulty>,
+) -> (
+    mpsc::Receiver<Event>,
+    Vec<JoinHandle<()>>,
+    broadcast::Sender<()>,
+) {
+    let mut config = WorkerConfig::new(environment, client_id,num_workers,with_local);
     config.max_difficulty = max_difficulty;
-    let (event_sender, event_receiver) = mpsc::channel::<Event>(
-        crate::consts::cli_consts::EVENT_QUEUE_SIZE
-    );
+    config.num_workers = num_workers;
+    let (event_sender, event_receiver) =
+        mpsc::channel::<Event>(crate::consts::cli_consts::EVENT_QUEUE_SIZE);
+
 
     // Create a separate shutdown sender for max tasks completion
     let (shutdown_sender, _) = broadcast::channel(1);

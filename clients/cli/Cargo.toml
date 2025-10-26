@@ -7,8 +7,12 @@ build = "build.rs"
 
 [features]
 build_proto = []
-[lib]
-crate-type = ["cdylib"]
+
+# 仅 Android 目标使用 cdylib
+[target.'cfg(target_os = "android")'.lib]
+crate-type = ["cdylib", "rlib"]
+
+
 [[bin]]
 name = "nexus-network"
 path = "src/main.rs"

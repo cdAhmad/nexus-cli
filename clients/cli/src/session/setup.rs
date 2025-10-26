@@ -105,8 +105,8 @@ pub async fn setup_session(
 ) -> Result<SessionData, Box<dyn Error>> {
     let node_id = config.node_id.parse::<u64>()?;
     let client_id = config.user_id.clone();
-
-    let signing_key: SigningKey = config.get_signing_key()?;
+    let mut csprng = rand_core::OsRng;
+    let signing_key = SigningKey::generate(&mut csprng);
 
     // Create orchestrator client
     let orchestrator_client = OrchestratorClient::new(env.clone());
@@ -130,12 +130,10 @@ pub async fn setup_session(
     //     }
     // }
 
-
     // Additional memory warning if explicitly requested
     if check_mem {
         warn_memory_configuration(Some(num_workers as u32));
     }
-
 
     // Create shutdown channel - only one shutdown signal needed
     let (shutdown_sender, _) = broadcast::channel(1);
@@ -165,6 +163,6 @@ pub async fn setup_session(
         max_tasks_shutdown_sender,
         node_id,
         orchestrator: orchestrator_client,
-        num_workers ,
+        num_workers,
     })
 }

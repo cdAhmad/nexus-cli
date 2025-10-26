@@ -46,7 +46,6 @@ pub struct Config {
     #[serde(default)]
     pub node_id: String,
 
-    pub singing_key: SecretKey,
 }
 
 impl Config {
@@ -57,14 +56,11 @@ impl Config {
         node_id: String,
         environment: Environment,
     ) -> Self {
-        let mut csprng = rand_core::OsRng;
-        let signing_key = SigningKey::generate(&mut csprng);
         Config {
             user_id,
             wallet_address,
             node_id,
             environment: environment.to_string(),
-            singing_key: signing_key.to_bytes(),
         }
     }
 
@@ -74,10 +70,6 @@ impl Config {
         let config: Config = serde_json::from_slice(&buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Ok(config)
-    }
-    pub fn get_signing_key(&self) -> Result<SigningKey, Box<dyn Error>> {
-        let signing_key = SigningKey::from_bytes(&self.singing_key);
-        Ok(signing_key)
     }
 
     /// Saves the configuration to a JSON file at the given path.
@@ -130,7 +122,6 @@ impl Config {
                 wallet_address,
                 node_id: node_id.to_string(),
                 environment: "".to_string(),
-                singing_key: signing_key.to_bytes(),
             };
 
             return Ok(config);

@@ -75,7 +75,7 @@ impl WorkerConfig {
         Self {
             environment,
             client_id,
-            num_workers:1,
+            num_workers,
             with_local,
             max_difficulty: None,
         }

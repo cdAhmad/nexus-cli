@@ -114,21 +114,21 @@ pub async fn setup_session(
     // Clamp the number of workers to [1, 75% of num_cores]. Leave room for other processes.
     let total_cores = crate::system::num_cores();
     let max_workers = ((total_cores as f64 * 0.75).ceil() as usize).max(1);
-    let mut num_workers: usize = max_threads.unwrap_or(1).clamp(1, max_workers as u32) as usize;
+    let num_workers: usize = max_threads.unwrap_or(1).clamp(1, max_workers as u32) as usize;
 
     // Check memory and clamp threads if max-threads was explicitly set OR check-memory flag is set
-    if max_threads.is_some() || check_mem {
-        let memory_clamped_workers = clamp_threads_by_memory(num_workers);
-        if memory_clamped_workers < num_workers {
-            crate::print_cmd_warn!(
-                "Memory limit",
-                "Reduced thread count from {} to {} due to insufficient memory. Each thread requires ~4GB RAM.",
-                num_workers,
-                memory_clamped_workers
-            );
-            num_workers = memory_clamped_workers;
-        }
-    }
+    // if max_threads.is_some() || check_mem {
+    //     let memory_clamped_workers = clamp_threads_by_memory(num_workers);
+    //     if memory_clamped_workers < num_workers {
+    //         crate::print_cmd_warn!(
+    //             "Memory limit",
+    //             "Reduced thread count from {} to {} due to insufficient memory. Each thread requires ~4GB RAM.",
+    //             num_workers,
+    //             memory_clamped_workers
+    //         );
+    //         num_workers = memory_clamped_workers;
+    //     }
+    // }
 
 
     // Additional memory warning if explicitly requested
